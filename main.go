@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -42,7 +43,7 @@ func ls() *cobra.Command {
 
 			var in io.Reader
 
-			dir := ""
+			dir := strings.TrimSuffix(u, "/APKINDEX.tar.gz")
 
 			if u == "-" {
 				in = cmd.InOrStdin()
@@ -54,9 +55,14 @@ func ls() *cobra.Command {
 				defer rc.Close()
 
 				in = rc
-				dir = strings.TrimSuffix(u, "/APKINDEX.tar.gz")
 			} else {
-				return fmt.Errorf("todo: handle filepaths")
+				rc, err := os.Open(u)
+				if err != nil {
+					return err
+				}
+				defer rc.Close()
+
+				in = rc
 			}
 
 			index, err := repository.IndexFromArchive(io.NopCloser(in))
