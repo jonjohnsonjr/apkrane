@@ -10,8 +10,10 @@ import (
 	"os"
 	"strings"
 
+	"github.com/jonjohnsonjr/apkrane/internal/version"
 	"github.com/spf13/cobra"
 	"gitlab.alpinelinux.org/alpine/go/repository"
+	"golang.org/x/exp/maps"
 )
 
 func main() {
@@ -32,6 +34,7 @@ func cli() *cobra.Command {
 
 func ls() *cobra.Command {
 	var full bool
+	var latest bool
 	var j bool
 
 	cmd := &cobra.Command{
@@ -73,7 +76,41 @@ func ls() *cobra.Command {
 			w := cmd.OutOrStdout()
 			enc := json.NewEncoder(w)
 
-			for _, pkg := range index.Packages {
+			packages := index.Packages
+
+			if latest {
+				// by package
+				highest := map[string]*repository.Package{}
+
+				for _, pkg := range packages {
+					got, err := version.Parse(pkg.Version)
+					if err != nil {
+						// TODO: We should really fail here.
+						log.Printf("parsing %q: %v", pkg.Filename(), err)
+						continue
+					}
+
+					have, ok := highest[pkg.Name]
+					if !ok {
+						highest[pkg.Name] = pkg
+						continue
+					}
+
+					// TODO: We re-parse this for no reason.
+					parsed, err := version.Parse(have.Version)
+					if err != nil {
+						return err
+					}
+
+					if version.Compare(*got, *parsed) > 0 {
+						highest[pkg.Name] = pkg
+					}
+				}
+
+				packages = maps.Values(highest)
+			}
+
+			for _, pkg := range packages {
 				p := fmt.Sprintf("%s-%s.apk", pkg.Name, pkg.Version)
 				u := fmt.Sprintf("%s/%s", dir, p)
 				if j {
@@ -91,6 +128,7 @@ func ls() *cobra.Command {
 		},
 	}
 
+	cmd.Flags().BoolVar(&latest, "latest", false, "print only the latest version of each package")
 	cmd.Flags().BoolVar(&full, "full", false, "print the full url or path")
 	cmd.Flags().BoolVar(&j, "json", false, "print each package as json")
 

@@ -1,10 +1,11 @@
 module github.com/jonjohnsonjr/apkrane
 
-go 1.20
+go 1.22
 
 require (
 	github.com/spf13/cobra v1.7.0
 	gitlab.alpinelinux.org/alpine/go v0.7.0
+	golang.org/x/exp v0.0.0-20231108232855-2478ac86f678
 )
 
 require (
