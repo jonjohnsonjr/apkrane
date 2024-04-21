@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/jonjohnsonjr/apkrane/internal/version"
@@ -36,6 +37,7 @@ func ls() *cobra.Command {
 	var full bool
 	var latest bool
 	var j bool
+	var packageFilter string
 
 	cmd := &cobra.Command{
 		Use:     "ls",
@@ -77,6 +79,13 @@ func ls() *cobra.Command {
 			enc := json.NewEncoder(w)
 
 			packages := index.Packages
+
+			// TODO: origin filter as well?
+			if packageFilter != "" {
+				packages = slices.DeleteFunc(packages, func(pkg *repository.Package) bool {
+					return pkg.Name != packageFilter
+				})
+			}
 
 			if latest {
 				// by package
@@ -128,6 +137,7 @@ func ls() *cobra.Command {
 		},
 	}
 
+	cmd.Flags().StringVarP(&packageFilter, "package", "P", "", "print only packages with the given name")
 	cmd.Flags().BoolVar(&latest, "latest", false, "print only the latest version of each package")
 	cmd.Flags().BoolVar(&full, "full", false, "print the full url or path")
 	cmd.Flags().BoolVar(&j, "json", false, "print each package as json")
