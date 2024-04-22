@@ -47,3 +47,33 @@ apkrane ls --json https://packages.wolfi.dev/os/x86_64/APKINDEX.tar.gz | jq .Nam
   89 rqlite
   79 pulumi-language-python
 ```
+
+Count only the latest versions of every package:
+
+```
+apkrane ls --latest https://packages.wolfi.dev/os/x86_64/APKINDEX.tar.gz | wc -l
+    5791
+```
+
+Show all versions of vim:
+
+```
+apkrane ls -P vim https://packages.wolfi.dev/os/x86_64/APKINDEX.tar.gz | tail
+vim-9.1.0296-r0.apk
+vim-9.1.0304-r0.apk
+vim-9.1.0309-r0.apk
+vim-9.1.0318-r0.apk
+vim-9.1.0330-r0.apk
+vim-9.1.0336-r0.apk
+vim-9.1.0354-r0.apk
+vim-9.1.0356-r0.apk
+vim-9.1.0358-r0.apk
+vim-9.1.0359-r0.apk
+```
+
+Show only the most recent version of `vim`:
+
+```
+apkrane ls --latest -P vim https://packages.wolfi.dev/os/x86_64/APKINDEX.tar.gz
+vim-9.1.0359-r0.apk
+```
