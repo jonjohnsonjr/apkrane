@@ -33,6 +33,31 @@ func cli() *cobra.Command {
 	return cmd
 }
 
+func fetchIndex(ctx context.Context, u string) (io.ReadCloser, error) {
+	if u == "-" {
+		return os.Stdin, nil
+	}
+
+	scheme, _, ok := strings.Cut(u, "://")
+	if !ok || !strings.HasPrefix(scheme, "http") {
+		return os.Open(u)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("GET %q: %w", u, err)
+	}
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("GET %q: status %d", u, resp.StatusCode)
+	}
+
+	return resp.Body, nil
+}
+
 func ls() *cobra.Command {
 	var full bool
 	var latest bool
@@ -44,31 +69,16 @@ func ls() *cobra.Command {
 		Example: `apkrane ls https://packages.wolfi.dev/os/x86_64/APKINDEX.tar.gz`,
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
 			u := args[0]
-
-			var in io.Reader
 
 			dir := strings.TrimSuffix(u, "/APKINDEX.tar.gz")
 
-			if u == "-" {
-				in = cmd.InOrStdin()
-			} else if scheme, _, ok := strings.Cut(u, "://"); ok && strings.HasPrefix(scheme, "http") {
-				rc, err := fetchIndex(u)
-				if err != nil {
-					return err
-				}
-				defer rc.Close()
-
-				in = rc
-			} else {
-				rc, err := os.Open(u)
-				if err != nil {
-					return err
-				}
-				defer rc.Close()
-
-				in = rc
+			in, err := fetchIndex(ctx, u)
+			if err != nil {
+				return err
 			}
+			defer in.Close()
 
 			index, err := repository.IndexFromArchive(io.NopCloser(in))
 			if err != nil {
@@ -143,16 +153,4 @@ func ls() *cobra.Command {
 	cmd.Flags().BoolVar(&j, "json", false, "print each package as json")
 
 	return cmd
-}
-
-func fetchIndex(u string) (io.ReadCloser, error) {
-	resp, err := http.Get(u)
-	if err != nil {
-		return nil, fmt.Errorf("GET %q: %w", u, err)
-	}
-	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("GET %q: status %d", u, resp.StatusCode)
-	}
-
-	return resp.Body, nil
 }
