@@ -175,7 +175,7 @@ func cp() *cobra.Command {
 			errg, ctx := errgroup.WithContext(cmd.Context())
 
 			repoURL := strings.TrimSuffix(indexURL, "/APKINDEX.tar.gz")
-			arch := repoURL[ strings.LastIndex(repoURL, "/"):]
+			arch := repoURL[strings.LastIndex(repoURL, "/"):]
 
 			in, err := fetchIndex(ctx, indexURL)
 			if err != nil {
@@ -260,7 +260,6 @@ func cp() *cobra.Command {
 				if !strings.HasSuffix(path, ".apk") {
 					return nil
 				}
-
 
 				f, err := os.Open(path)
 				if err != nil {
