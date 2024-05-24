@@ -167,87 +167,83 @@ func onlyLatest(packages []*repository.Package) []*repository.Package {
 
 func cp() *cobra.Command {
 	var latest bool
-	var repoAlias, outDir string
-	var archs []string
+	var repoAlias, outDir, arch string
 	cmd := &cobra.Command{
 		Use:     "cp",
 		Aliases: []string{"copy"},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			errg, ctx := errgroup.WithContext(cmd.Context())
+
+			repoURL := repoURL(repoAlias, arch)
+
+			indexURL := repoURL + "/APKINDEX.tar.gz"
+			in, err := fetchIndex(ctx, indexURL)
+			if err != nil {
+				return fmt.Errorf("fetching %q: %w", indexURL, err)
+			}
+			defer in.Close()
+			index, err := repository.IndexFromArchive(io.NopCloser(in))
+			if err != nil {
+				return fmt.Errorf("parsing %q: %w", indexURL, err)
+			}
+
 			wantSet := map[string]struct{}{}
 			for _, p := range args {
 				wantSet[p] = struct{}{}
 			}
-
-			errg, ctx := errgroup.WithContext(cmd.Context())
-
-			for _, arch := range archs {
-				repoURL := repoURL(repoAlias, arch)
-
-				indexURL := repoURL + "/APKINDEX.tar.gz"
-				in, err := fetchIndex(ctx, indexURL)
-				if err != nil {
-					return fmt.Errorf("fetching %q: %w", indexURL, err)
+			var packages []*repository.Package
+			for _, pkg := range index.Packages {
+				if _, ok := wantSet[pkg.Name]; !ok {
+					continue
 				}
-				defer in.Close()
-				index, err := repository.IndexFromArchive(io.NopCloser(in))
-				if err != nil {
-					return fmt.Errorf("parsing %q: %w", indexURL, err)
-				}
+				packages = append(packages, pkg)
+			}
 
-				var packages []*repository.Package
-				for _, pkg := range index.Packages {
-					if _, ok := wantSet[pkg.Name]; !ok {
-						continue
-					}
-					packages = append(packages, pkg)
-				}
+			if latest {
+				packages = onlyLatest(packages)
+			}
 
-				if latest {
-					packages = onlyLatest(packages)
-				}
+			log.Printf("downloading %d packages for %s", len(packages), arch)
 
-				log.Printf("downloading %d packages for %s", len(packages), arch)
-
-				for _, pkg := range packages {
-					pkg := pkg
-					errg.Go(func() error {
-						fn := filepath.Join(outDir, arch, pkg.Filename())
-						if _, err := os.Stat(fn); err == nil {
-							log.Printf("skipping %s: already exists", fn)
-							return nil
-						}
-
-						url := fmt.Sprintf("%s/%s", repoURL, pkg.Filename())
-						req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-						if err != nil {
-							return err
-						}
-						resp, err := http.DefaultClient.Do(req)
-						if err != nil {
-							return err
-						}
-						defer resp.Body.Close()
-
-						if err := os.MkdirAll(filepath.Join(outDir, arch), 0755); err != nil {
-							return err
-						}
-
-						f, err := os.Create(fn)
-						if err != nil {
-							return err
-						}
-						defer f.Close()
-
-						log.Println("downloading", url)
-						if _, err := io.Copy(f, resp.Body); err != nil {
-							return err
-						}
-						log.Printf("wrote %s", fn)
+			for _, pkg := range packages {
+				pkg := pkg
+				errg.Go(func() error {
+					fn := filepath.Join(outDir, arch, pkg.Filename())
+					if _, err := os.Stat(fn); err == nil {
+						log.Printf("skipping %s: already exists", fn)
 						return nil
-					})
+					}
 
-					// TODO: Also get (latest) runtime deps here?
-				}
+					url := fmt.Sprintf("%s/%s", repoURL, pkg.Filename())
+					req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+					if err != nil {
+						return err
+					}
+					resp, err := http.DefaultClient.Do(req)
+					if err != nil {
+						return err
+					}
+					defer resp.Body.Close()
+
+					if err := os.MkdirAll(filepath.Join(outDir, arch), 0755); err != nil {
+						return err
+					}
+
+					f, err := os.Create(fn)
+					if err != nil {
+						return err
+					}
+					defer f.Close()
+
+					log.Println("downloading", url)
+					if _, err := io.Copy(f, resp.Body); err != nil {
+						return err
+					}
+					log.Printf("wrote %s", fn)
+					return nil
+				})
+
+				// TODO: Also get (latest) runtime deps here?
 			}
 
 			if err := errg.Wait(); err != nil {
@@ -255,57 +251,55 @@ func cp() *cobra.Command {
 			}
 
 			// Update the local index for all the apks currently in the outDir.
-			for _, arch := range archs {
-				index := &repository.ApkIndex{}
+			index.Packages = nil
 
-				pfs := os.DirFS(filepath.Join(outDir, arch))
-				fs.WalkDir(pfs, ".", func(path string, d fs.DirEntry, err error) error {
-					if err != nil {
-						return err
-					}
-					if d.IsDir() {
-						return nil
-					}
-					if !strings.HasSuffix(path, ".apk") {
-						return nil
-					}
-
-					f, err := pfs.Open(path)
-					if err != nil {
-						return err
-					}
-					defer f.Close()
-					pkg, err := repository.ParsePackage(f)
-					if err != nil {
-						return err
-					}
-					index.Packages = append(index.Packages, pkg)
+			if err := filepath.WalkDir(filepath.Join(outDir, arch), func(path string, d fs.DirEntry, err error) error {
+				if err != nil {
+					return err
+				}
+				if !strings.HasSuffix(path, ".apk") {
 					return nil
-				})
-				fn := filepath.Join(outDir, arch, "APKINDEX.tar.gz")
-				log.Printf("writing index: %s", fn)
-				f, err := os.Create(fn)
+				}
+
+
+				f, err := os.Open(path)
 				if err != nil {
 					return err
 				}
 				defer f.Close()
-				r, err := repository.ArchiveFromIndex(index)
+				pkg, err := repository.ParsePackage(f)
 				if err != nil {
 					return err
 				}
-				if _, err := io.Copy(f, r); err != nil {
-					return err
-				}
-
-				// TODO: Sign index?
+				index.Packages = append(index.Packages, pkg)
+				return nil
+			}); err != nil {
+				return err
 			}
+			fn := filepath.Join(outDir, arch, "APKINDEX.tar.gz")
+			log.Printf("writing index: %s (%d packages)", fn, len(index.Packages))
+			f, err := os.Create(fn)
+			if err != nil {
+				return err
+			}
+			defer f.Close()
+			r, err := repository.ArchiveFromIndex(index)
+			if err != nil {
+				return err
+			}
+			if _, err := io.Copy(f, r); err != nil {
+				return err
+			}
+
+			// TODO: Sign index?
+
 			return nil
 		},
 	}
 	cmd.Flags().StringVarP(&outDir, "out-dir", "o", "./packages", "directory to copy packages to")
 	cmd.Flags().StringVarP(&repoAlias, "repo", "r", "wolfi", "repository alias or URL")
 	cmd.Flags().BoolVar(&latest, "latest", true, "copy only the latest version of each package")
-	cmd.Flags().StringSliceVar(&archs, "arch", []string{"x86_64", "aarch64"}, "copy only packages with the given arches")
+	cmd.Flags().StringVar(&arch, "arch", "x86_64", "copy only packages with the given arch")
 	return cmd
 }
 
