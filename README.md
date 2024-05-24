@@ -83,19 +83,15 @@ vim-9.1.0359-r0.apk
 Copy APKs file from a remote repository.
 
 ```
-apkrane cp go-1.22
-2024/05/24 09:53:19 downloading 1 packages for x86_64
-2024/05/24 09:53:19 downloading https://packages.wolfi.dev/os/x86_64/go-1.22-1.22.3-r0.apk
-2024/05/24 09:53:43 wrote packages/x86_64/go-1.22-1.22.3-r0.apk
-2024/05/24 09:53:44 downloading 1 packages for aarch64
-2024/05/24 09:53:44 downloading https://packages.wolfi.dev/os/aarch64/go-1.22-1.22.3-r0.apk
-2024/05/24 09:54:09 wrote packages/aarch64/go-1.22-1.22.3-r0.apk
+apkrane cp go-1.21
+2024/05/24 12:15:58 downloading 1 packages for /x86_64
+2024/05/24 12:15:58 downloading https://packages.wolfi.dev/os/x86_64/go-1.21-1.21.10-r0.apk
+2024/05/24 12:16:15 wrote packages/x86_64/go-1.21-1.21.10-r0.apk
+2024/05/24 12:16:16 writing index: packages/x86_64/APKINDEX.tar.gz (1 packages)
 ```
 
 By default it will download the latest version of the package, which you can disable with `--latest=false`.
 
 By default it will download to `./packages`, which you can change with `--out-dir`/`-o`.
 
-By default it will download for all architectures, which you can change with `--arch`/`-a`, which accepts comma-separated values
-
-You can specify a different APK repository location with `--repo`/`-r`, which accepts values `wolfi` (default), `extras` and `enterprise`.
+You can specify a different APKINDEX location with `--index`/`-i`. The default is Wolfi's x86_64 index, `https://packages.wolfi.dev/os/x86_64/APKINDEX.tar.gz`.

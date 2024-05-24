@@ -167,16 +167,16 @@ func onlyLatest(packages []*repository.Package) []*repository.Package {
 
 func cp() *cobra.Command {
 	var latest bool
-	var repoAlias, outDir, arch string
+	var indexURL, outDir string
 	cmd := &cobra.Command{
 		Use:     "cp",
 		Aliases: []string{"copy"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			errg, ctx := errgroup.WithContext(cmd.Context())
 
-			repoURL := repoURL(repoAlias, arch)
+			repoURL := strings.TrimSuffix(indexURL, "/APKINDEX.tar.gz")
+			arch := repoURL[ strings.LastIndex(repoURL, "/"):]
 
-			indexURL := repoURL + "/APKINDEX.tar.gz"
 			in, err := fetchIndex(ctx, indexURL)
 			if err != nil {
 				return fmt.Errorf("fetching %q: %w", indexURL, err)
@@ -297,25 +297,7 @@ func cp() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVarP(&outDir, "out-dir", "o", "./packages", "directory to copy packages to")
-	cmd.Flags().StringVarP(&repoAlias, "repo", "r", "wolfi", "repository alias or URL")
+	cmd.Flags().StringVarP(&indexURL, "index", "i", "https://packages.wolfi.dev/os/x86_64/APKINDEX.tar.gz", "APKINDEX.tar.gz URL")
 	cmd.Flags().BoolVar(&latest, "latest", true, "copy only the latest version of each package")
-	cmd.Flags().StringVar(&arch, "arch", "x86_64", "copy only packages with the given arch")
 	return cmd
-}
-
-func repoURL(alias, arch string) string {
-	if strings.HasPrefix(alias, "https://") {
-		return alias
-	}
-
-	switch alias {
-	case "wolfi":
-		return fmt.Sprintf("https://packages.wolfi.dev/os/%s", arch)
-	case "extras", "extra-packages":
-		return fmt.Sprintf("https://packages.cgr.dev/extras/%s", arch)
-	case "enterprise", "enterprise-packages":
-		return fmt.Sprintf("https://packages.cgr.dev/os/%s", arch)
-	}
-	log.Fatalf("unknown repo alias %q", alias)
-	return ""
 }
