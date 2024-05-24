@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
@@ -253,8 +254,51 @@ func cp() *cobra.Command {
 				return err
 			}
 
-			// TODO: Update the local index, to include all the new and existing packages.
+			// Update the local index for all the apks currently in the outDir.
+			for _, arch := range archs {
+				index := &repository.ApkIndex{}
 
+				pfs := os.DirFS(filepath.Join(outDir, arch))
+				fs.WalkDir(pfs, ".", func(path string, d fs.DirEntry, err error) error {
+					if err != nil {
+						return err
+					}
+					if d.IsDir() {
+						return nil
+					}
+					if !strings.HasSuffix(path, ".apk") {
+						return nil
+					}
+
+					f, err := pfs.Open(path)
+					if err != nil {
+						return err
+					}
+					defer f.Close()
+					pkg, err := repository.ParsePackage(f)
+					if err != nil {
+						return err
+					}
+					index.Packages = append(index.Packages, pkg)
+					return nil
+				})
+				fn := filepath.Join(outDir, arch, "APKINDEX.tar.gz")
+				log.Printf("writing index: %s", fn)
+				f, err := os.Create(fn)
+				if err != nil {
+					return err
+				}
+				defer f.Close()
+				r, err := repository.ArchiveFromIndex(index)
+				if err != nil {
+					return err
+				}
+				if _, err := io.Copy(f, r); err != nil {
+					return err
+				}
+
+				// TODO: Sign index?
+			}
 			return nil
 		},
 	}
