@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strings"
 
+	"cloud.google.com/go/storage"
 	"github.com/jonjohnsonjr/apkrane/internal/version"
 	"github.com/spf13/cobra"
 	"gitlab.alpinelinux.org/alpine/go/repository"
@@ -167,15 +168,16 @@ func onlyLatest(packages []*repository.Package) []*repository.Package {
 
 func cp() *cobra.Command {
 	var latest bool
-	var indexURL, outDir string
+	var indexURL, outDir, gcsPath string
 	cmd := &cobra.Command{
 		Use:     "cp",
 		Aliases: []string{"copy"},
+		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			errg, ctx := errgroup.WithContext(cmd.Context())
 
 			repoURL := strings.TrimSuffix(indexURL, "/APKINDEX.tar.gz")
-			arch := repoURL[strings.LastIndex(repoURL, "/"):]
+			arch := repoURL[strings.LastIndex(repoURL, "/")+1:]
 
 			in, err := fetchIndex(ctx, indexURL)
 			if err != nil {
@@ -203,6 +205,10 @@ func cp() *cobra.Command {
 				packages = onlyLatest(packages)
 			}
 
+			if len(packages) == 0 {
+				return fmt.Errorf("no packages found")
+			}
+
 			log.Printf("downloading %d packages for %s", len(packages), arch)
 
 			for _, pkg := range packages {
@@ -214,29 +220,49 @@ func cp() *cobra.Command {
 						return nil
 					}
 
-					url := fmt.Sprintf("%s/%s", repoURL, pkg.Filename())
-					req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-					if err != nil {
-						return err
-					}
-					resp, err := http.DefaultClient.Do(req)
-					if err != nil {
-						return err
-					}
-					defer resp.Body.Close()
+					var rc io.ReadCloser
+					if gcsPath == "" {
+						url := fmt.Sprintf("%s/%s", repoURL, pkg.Filename())
+						log.Println("downloading", url)
+						req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+						if err != nil {
+							return err
+						}
+						resp, err := http.DefaultClient.Do(req)
+						if err != nil {
+							return err
+						}
 
-					if err := os.MkdirAll(filepath.Join(outDir, arch), 0755); err != nil {
+						if err := os.MkdirAll(filepath.Join(outDir, arch), 0755); err != nil {
+							return err
+						}
+						rc = resp.Body
+					} else {
+						gcsPath = strings.TrimPrefix(gcsPath, "gs://")
+						bucket, path, _ := strings.Cut(gcsPath, "/")
+						fullPath := filepath.Join(path, arch, pkg.Filename())
+						log.Printf("downloading gs://%s/%s", bucket, fullPath)
+
+						client, err := storage.NewClient(ctx)
+						if err != nil {
+							return err
+						}
+						rc, err = client.Bucket(bucket).Object(fullPath).NewReader(ctx)
+						if err != nil {
+							return err
+						}
+					}
+					defer rc.Close()
+
+					if err := os.MkdirAll(filepath.Dir(fn), 0755); err != nil {
 						return err
 					}
-
 					f, err := os.Create(fn)
 					if err != nil {
 						return err
 					}
 					defer f.Close()
-
-					log.Println("downloading", url)
-					if _, err := io.Copy(f, resp.Body); err != nil {
+					if _, err := io.Copy(f, rc); err != nil {
 						return err
 					}
 					log.Printf("wrote %s", fn)
@@ -276,7 +302,7 @@ func cp() *cobra.Command {
 				return err
 			}
 			fn := filepath.Join(outDir, arch, "APKINDEX.tar.gz")
-			log.Printf("writing index: %s (%d packages)", fn, len(index.Packages))
+			log.Printf("writing index: %s (%d total packages)", fn, len(index.Packages))
 			f, err := os.Create(fn)
 			if err != nil {
 				return err
@@ -298,5 +324,6 @@ func cp() *cobra.Command {
 	cmd.Flags().StringVarP(&outDir, "out-dir", "o", "./packages", "directory to copy packages to")
 	cmd.Flags().StringVarP(&indexURL, "index", "i", "https://packages.wolfi.dev/os/x86_64/APKINDEX.tar.gz", "APKINDEX.tar.gz URL")
 	cmd.Flags().BoolVar(&latest, "latest", true, "copy only the latest version of each package")
+	cmd.Flags().StringVar(&gcsPath, "gcs", "", "copy objects from a GCS bucket")
 	return cmd
 }
