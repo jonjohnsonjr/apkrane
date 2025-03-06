@@ -48,7 +48,14 @@ func fetchIndex(ctx context.Context, u string, auth string) (io.ReadCloser, erro
 		return nil, err
 	}
 	if auth != "" {
-		req.SetBasicAuth("user", auth)
+		// The auth string comes in the format of basic:domain:user:password
+		// We only need the user and password. So split it out.
+		a := strings.Split(auth, ":")
+		if len(a) < 4 || a[0] != "basic" {
+			return nil, fmt.Errorf("auth string needs to be in the format of basic:domain:user:password")
+		}
+
+		req.SetBasicAuth(a[2], a[3])
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -160,7 +167,7 @@ func ls() *cobra.Command {
 	cmd.Flags().BoolVar(&latest, "latest", false, "print only the latest version of each package")
 	cmd.Flags().BoolVar(&full, "full", false, "print the full url or path")
 	cmd.Flags().BoolVar(&j, "json", false, "print each package as json")
-	cmd.Flags().StringVarP(&auth, "auth", "A", "", "the auth token to use for the request")
+	cmd.Flags().StringVarP(&auth, "auth", "A", "", "the auth string (basic:domain:user:password) to use for the request")
 
 	return cmd
 }

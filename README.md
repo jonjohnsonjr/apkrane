@@ -81,11 +81,11 @@ vim-9.1.0359-r0.apk
 Work with private repositories:
 
 ```
-apkrane ls --latest --auth "$(chainctl auth token --audience apk.cgr.dev)" https://apk.cgr.dev/chainguard-private/x86_64/APKINDEX.tar.gz | head
+apkrane ls --latest --auth "basic:apk.cgr.dev:user:$(chainctl auth token --audience apk.cgr.dev)" https://apk.cgr.dev/chainguard-private/x86_64/APKINDEX.tar.gz | head
 ```
 
 The HTTP_AUTH environment variable can also be used:
 
 ```
-HTTP_AUTH="$(chainctl auth token --audience apk.cgr.dev)" apkrane ls --latest https://apk.cgr.dev/chainguard-private/x86_64/APKINDEX.tar.gz | head
+HTTP_AUTH="basic:apk.cgr.dev:user:$(chainctl auth token --audience apk.cgr.dev)" apkrane ls --latest https://apk.cgr.dev/chainguard-private/x86_64/APKINDEX.tar.gz | head
 ```
