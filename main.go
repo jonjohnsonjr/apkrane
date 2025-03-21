@@ -33,7 +33,7 @@ func cli() *cobra.Command {
 	return cmd
 }
 
-func fetchIndex(ctx context.Context, u string) (io.ReadCloser, error) {
+func fetchIndex(ctx context.Context, u string, auth string) (io.ReadCloser, error) {
 	if u == "-" {
 		return os.Stdin, nil
 	}
@@ -46,6 +46,16 @@ func fetchIndex(ctx context.Context, u string) (io.ReadCloser, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return nil, err
+	}
+	if auth != "" {
+		// The auth string comes in the format of basic:domain:user:password
+		// We only need the user and password. So split it out.
+		a := strings.Split(auth, ":")
+		if len(a) < 4 || a[0] != "basic" {
+			return nil, fmt.Errorf("auth string needs to be in the format of basic:domain:user:password")
+		}
+
+		req.SetBasicAuth(a[2], a[3])
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -63,6 +73,7 @@ func ls() *cobra.Command {
 	var latest bool
 	var j bool
 	var packageFilter string
+	var auth string
 
 	cmd := &cobra.Command{
 		Use:     "ls",
@@ -72,9 +83,14 @@ func ls() *cobra.Command {
 			ctx := cmd.Context()
 			u := args[0]
 
+			if auth == "" {
+				// Allow using the HTTP_AUTH environment variable as well.
+				auth = os.Getenv("HTTP_AUTH")
+			}
+
 			dir := strings.TrimSuffix(u, "/APKINDEX.tar.gz")
 
-			in, err := fetchIndex(ctx, u)
+			in, err := fetchIndex(ctx, u, auth)
 			if err != nil {
 				return err
 			}
@@ -151,6 +167,7 @@ func ls() *cobra.Command {
 	cmd.Flags().BoolVar(&latest, "latest", false, "print only the latest version of each package")
 	cmd.Flags().BoolVar(&full, "full", false, "print the full url or path")
 	cmd.Flags().BoolVar(&j, "json", false, "print each package as json")
+	cmd.Flags().StringVarP(&auth, "auth", "A", "", "the auth string (basic:domain:user:password) to use for the request")
 
 	return cmd
 }
