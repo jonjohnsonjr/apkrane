@@ -47,7 +47,7 @@ func fetchIndex(ctx context.Context, u string, auth string) (io.ReadCloser, erro
 	if err != nil {
 		return nil, err
 	}
-	if auth != "" {
+	if auth != "" && !strings.Contains(u, "packages.wolfi.dev") {
 		// The auth string comes in the format of basic:domain:user:password
 		// We only need the user and password. So split it out.
 		a := strings.Split(auth, ":")
